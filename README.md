@@ -5,6 +5,8 @@ on Reddit. It's modeled on [ApeWisdom](https://apewisdom.io/): it counts
 mentions, ranks them, tracks how each ticker moves over 24 hours, and pulls in
 live prices so you can see when the chatter and the price line up or pull apart.
 
+![RedditTrends screenshot](docs/screenshot.png)
+
 ## What you get
 
 - A ranked table of trending tickers, with mentions, 24h rank change, upvotes,
