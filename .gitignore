@@ -1,4 +1,7 @@
 node_modules/
+dist/
+public/app.js
+*.tsbuildinfo
 data/snapshots.json
 data/trends.db
 data/trends.db-shm

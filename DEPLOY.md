@@ -20,15 +20,20 @@ cd ~
 git clone https://github.com/<your-username>/reddit-trends.git
 cd reddit-trends
 nvm use            # or ensure `node -v` is 18+
-npm install        # builds/fetches better-sqlite3 for the Pi's architecture
+npm install        # installs deps, builds better-sqlite3 for the Pi's arch,
+                   # and compiles TypeScript → dist/ (via the prepare script)
 ```
+
+> The app is TypeScript. `npm install` auto-runs `npm run build` (the `prepare`
+> script), producing `dist/` and `public/app.js`. To rebuild manually after code
+> changes: `npm run build`.
 
 ## 2. Smoke-test the collector
 
 ```bash
-node collect.js
+npm run collect          # = node dist/collect.js
 # → [2026-…Z] collected 12/12 filters, 1100 ticker rows, in 1840ms
-ls -lh data/trends.db        # the SQLite database now exists
+ls -lh data/trends.db    # the SQLite database now exists
 ```
 
 If that prints a collected line and `data/trends.db` appears, you're ready to

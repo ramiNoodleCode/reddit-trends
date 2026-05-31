@@ -21,4 +21,4 @@ if [ -s "$HOME/.nvm/nvm.sh" ]; then
   nvm use --silent >/dev/null 2>&1 || true
 fi
 
-exec node collect.js
+exec node dist/collect.js

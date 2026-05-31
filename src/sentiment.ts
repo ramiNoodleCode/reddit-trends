@@ -1,8 +1,6 @@
-'use strict';
-
 // A tiny lexicon-based sentiment scorer tuned for retail-investor slang.
 // Returns a score in [-1, 1] and a label. Good enough to surface a "vibe"
-// column without pulling in an ML dependency.
+// without pulling in an ML dependency.
 
 const BULLISH = [
   'moon', 'rocket', 'bull', 'bullish', 'buy', 'buying', 'long', 'calls',
@@ -23,7 +21,7 @@ const BEARISH = [
 const POS = new Set(BULLISH);
 const NEG = new Set(BEARISH);
 
-function scoreText(text) {
+export function scoreText(text: string): number {
   if (!text) return 0;
   const words = text.toLowerCase().match(/[a-z]+/g);
   if (!words) return 0;
@@ -36,16 +34,14 @@ function scoreText(text) {
 }
 
 // Convert a running net score + sample count into a normalized [-1,1] value.
-function normalize(net, samples) {
+export function normalize(net: number, samples: number): number {
   if (!samples) return 0;
   const v = net / Math.sqrt(samples);
   return Math.max(-1, Math.min(1, v / 4));
 }
 
-function label(score) {
+export function label(score: number): string {
   if (score > 0.15) return 'Bullish';
   if (score < -0.15) return 'Bearish';
   return 'Neutral';
 }
-
-module.exports = { scoreText, normalize, label };

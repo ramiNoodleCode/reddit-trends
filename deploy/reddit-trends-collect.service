@@ -12,7 +12,7 @@ User=pi
 WorkingDirectory=/home/pi/reddit-trends
 # Use an absolute node path. Find yours with: which node
 # (nvm example: /home/pi/.nvm/versions/node/v20.18.0/bin/node)
-ExecStart=/usr/bin/node collect.js
+ExecStart=/usr/bin/node dist/collect.js
 # Each cron run records a snapshot; keep this <= the timer interval.
 Environment=SNAPSHOT_MIN_GAP_MIN=25
 Nice=10

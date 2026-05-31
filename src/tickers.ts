@@ -1,10 +1,10 @@
-'use strict';
+import type { AssetType } from './types';
 
 // A curated dictionary of popular tickers. Keeping a known-symbol list (rather
 // than treating every uppercase token as a ticker) is what keeps the signal
 // clean — it's the same approach ApeWisdom uses to avoid garbage matches.
 
-const STOCKS = {
+export const STOCKS: Record<string, string> = {
   GME: 'GameStop', AMC: 'AMC Entertainment', TSLA: 'Tesla', AAPL: 'Apple',
   NVDA: 'NVIDIA', AMD: 'Advanced Micro Devices', MSFT: 'Microsoft',
   AMZN: 'Amazon', GOOG: 'Alphabet', GOOGL: 'Alphabet', META: 'Meta Platforms',
@@ -39,7 +39,7 @@ const STOCKS = {
   VXX: 'iPath VIX', GLD: 'SPDR Gold', SLV: 'iShares Silver',
 };
 
-const CRYPTO = {
+export const CRYPTO: Record<string, string> = {
   BTC: 'Bitcoin', ETH: 'Ethereum', SOL: 'Solana', XRP: 'Ripple',
   ADA: 'Cardano', DOGE: 'Dogecoin', SHIB: 'Shiba Inu', DOT: 'Polkadot',
   MATIC: 'Polygon', LTC: 'Litecoin', LINK: 'Chainlink', AVAX: 'Avalanche',
@@ -56,25 +56,23 @@ const CRYPTO = {
 // Tokens that look like tickers but are overwhelmingly slang / English words on
 // Reddit. We never count a bare token in this set (a $-prefixed cashtag still
 // counts). This list is the difference between a usable feed and noise.
-const BLACKLIST = new Set([
+export const BLACKLIST: Set<string> = new Set([
   'DD', 'YOLO', 'CEO', 'CFO', 'IMO', 'IMHO', 'USA', 'USD', 'FD', 'FDS', 'ATH',
   'FOMO', 'WSB', 'IPO', 'ETF', 'OTM', 'ITM', 'EOD', 'EOW', 'AH', 'PM', 'PR',
   'EV', 'AI', 'ML', 'API', 'IT', 'OK', 'NO', 'YES', 'LOL', 'LMAO', 'WTF',
-  'TLDR', 'TLDW', 'EDIT', 'PSA', 'FAQ', 'USD', 'GDP', 'CPI', 'FED', 'SEC',
+  'TLDR', 'TLDW', 'EDIT', 'PSA', 'FAQ', 'GDP', 'CPI', 'FED', 'SEC',
   'IRS', 'ROI', 'EPS', 'PE', 'YOY', 'QOQ', 'TA', 'RSI', 'MACD', 'VWAP',
   'HODL', 'FUD', 'WAGMI', 'NGMI', 'GG', 'EZ', 'RIP', 'OG', 'TBH', 'TBF',
   'IRL', 'AMA', 'ELI5', 'NSFW', 'TIL', 'OP', 'DM', 'PMS', 'CC', 'BS', 'AF',
   'US', 'UK', 'EU', 'CA', 'NY', 'LA', 'DC', 'ID', 'TV', 'PC', 'OS', 'HR',
   'ALL', 'ANY', 'ARE', 'FOR', 'NEW', 'NOW', 'ONE', 'OUT', 'SO', 'UP', 'GO',
-  'HE', 'AT', 'BE', 'BY', 'DO', 'IF', 'IN', 'IS', 'IT', 'MY', 'OF', 'ON',
+  'HE', 'AT', 'BE', 'BY', 'DO', 'IF', 'IN', 'IS', 'MY', 'OF', 'ON',
   'OR', 'TO', 'WE', 'AN', 'AS', 'ME', 'MAN', 'GOD', 'WHO', 'WHY', 'HOW',
   'CAN', 'GET', 'HAS', 'HAD', 'WAS', 'SEE', 'SAY', 'PUT', 'CALL', 'PUTS',
   'CALLS', 'BIG', 'BUY', 'SELL', 'HOLD', 'MOON', 'BEAR', 'BULL', 'RED',
   'WIN', 'TOP', 'LOW', 'HIGH', 'OPEN', 'NEXT', 'LAST', 'BOT', 'GUH',
 ]);
 
-function dictFor(type) {
+export function dictFor(type: AssetType): Record<string, string> {
   return type === 'crypto' ? CRYPTO : STOCKS;
 }
-
-module.exports = { STOCKS, CRYPTO, BLACKLIST, dictFor };

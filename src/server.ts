@@ -1,40 +1,36 @@
-'use strict';
-
-const path = require('path');
-const express = require('express');
-const agg = require('./src/aggregate');
-const { isConfigured } = require('./src/reddit');
+import path from 'path';
+import express, { Request, Response } from 'express';
+import * as agg from './aggregate';
+import { isConfigured } from './reddit';
 
 const app = express();
-const PORT = process.env.PORT || 4000;
+const PORT = Number(process.env.PORT) || 4000;
 
-app.use(express.static(path.join(__dirname, 'public')));
+// Compiled to dist/server.js, so static assets live one level up at ../public.
+app.use(express.static(path.join(__dirname, '..', 'public')));
 
-// List of available filter tabs (stocks + crypto).
-app.get('/api/filters', (req, res) => {
+app.get('/api/filters', (_req: Request, res: Response) => {
   res.json({ filters: agg.listFilters() });
 });
 
 // Ranked trending tickers for a filter, e.g. /api/trending?filter=wallstreetbets
-app.get('/api/trending', async (req, res) => {
-  const filter = req.query.filter || 'all-stocks';
+app.get('/api/trending', async (req: Request, res: Response) => {
+  const filter = (req.query.filter as string) || 'all-stocks';
   const force = req.query.force === '1';
   try {
-    const data = await agg.getRanking(filter, { force });
-    res.json(data);
+    res.json(await agg.getRanking(filter, { force }));
   } catch (e) {
-    res.status(400).json({ error: e.message });
+    res.status(400).json({ error: (e as Error).message });
   }
 });
 
-// Detail + mention history for a single ticker within a filter.
-app.get('/api/ticker/:symbol', async (req, res) => {
-  const filter = req.query.filter || 'all-stocks';
+// Detail + history for a single ticker within a filter.
+app.get('/api/ticker/:symbol', async (req: Request, res: Response) => {
+  const filter = (req.query.filter as string) || 'all-stocks';
   try {
-    const data = await agg.getDetail(filter, req.params.symbol);
-    res.json(data);
+    res.json(await agg.getDetail(filter, String(req.params.symbol)));
   } catch (e) {
-    res.status(400).json({ error: e.message });
+    res.status(400).json({ error: (e as Error).message });
   }
 });
 
@@ -55,6 +51,6 @@ app.listen(PORT, () => {
 if (process.env.DISABLE_BACKGROUND_REFRESH !== '1') {
   const REFRESH_MS = (Number(process.env.REFRESH_MIN) || 15) * 60 * 1000;
   setInterval(() => {
-    agg.refreshAll().catch((e) => console.error('refresh error:', e.message));
+    agg.refreshAll().catch((e: Error) => console.error('refresh error:', e.message));
   }, REFRESH_MS).unref();
 }

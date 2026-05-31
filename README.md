@@ -38,19 +38,28 @@ Open <http://localhost:4000>.
 ## How it works
 
 ```
-src/apewisdom.js  ApeWisdom public-API client (default mention source)
-src/market.js     price enrichment — Stooq (stocks) + CoinGecko (crypto), no key
-src/reddit.js     Reddit OAuth client → oauth.reddit.com (optional pipeline)
-src/config.js     load Reddit app credentials (env or credentials.json)
-src/tickers.js    curated stock + crypto symbol dictionaries, slang blacklist
-src/aggregate.js  source selection, extract/rank/deltas, cache, snapshots
-src/sentiment.js  lightweight bullish/bearish lexicon scorer (Reddit path)
-src/store.js      SQLite snapshot store (better-sqlite3): history, 24h lookups,
+src/types.ts      shared domain types
+src/apewisdom.ts  ApeWisdom public-API client (default mention source)
+src/market.ts     price enrichment — Stooq (stocks) + CoinGecko (crypto), no key
+src/reddit.ts     Reddit OAuth client → oauth.reddit.com (optional pipeline)
+src/config.ts     load Reddit app credentials (env or credentials.json)
+src/tickers.ts    curated stock + crypto symbol dictionaries, slang blacklist
+src/aggregate.ts  source selection, extract/rank/deltas, enrichment, snapshots
+src/sentiment.ts  lightweight bullish/bearish lexicon scorer (Reddit path)
+src/store.ts      SQLite snapshot store (better-sqlite3): history, 24h lookups,
                   per-ticker charts; schema includes price; 30-day retention
+src/mock.ts       deterministic sample data + back-dated history
+src/server.ts     Express server + JSON API
+src/collect.ts    standalone collector (cron / systemd)
+src/client/app.ts browser UI (compiled to public/app.js); Chart.js via CDN
+public/           index.html + styles.css + compiled app.js
+dist/             compiled backend JS (build output; gitignored)
 data/trends.db    the SQLite database (gitignored; auto-created on first run)
-src/mock.js       deterministic sample data + back-dated history
-public/           single-page frontend (vanilla JS + Chart.js)
 ```
+
+Written in **TypeScript**: `npm run build` compiles the backend to `dist/` and the
+browser client to `public/app.js` (`npm install` runs this automatically via the
+`prepare` script).
 
 **Ticker extraction** matches `$CASHTAGS` and bare uppercase symbols against a
 known-symbol dictionary, with a slang blacklist (`DD`, `YOLO`, `CEO`, `ETF`, …)

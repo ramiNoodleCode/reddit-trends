@@ -4,7 +4,7 @@
     {
       "name": "reddit-trends",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["server.js"],
+      "runtimeArgs": ["dist/server.js"],
       "port": 4000
     }
   ]

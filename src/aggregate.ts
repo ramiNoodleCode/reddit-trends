@@ -1,16 +1,18 @@
-'use strict';
-
-const { dictFor, BLACKLIST } = require('./tickers');
-const reddit = require('./reddit');
-const apewisdom = require('./apewisdom');
-const market = require('./market');
-const sentiment = require('./sentiment');
-const store = require('./store');
-const mock = require('./mock');
+import { dictFor, BLACKLIST } from './tickers';
+import * as reddit from './reddit';
+import * as apewisdom from './apewisdom';
+import * as market from './market';
+import * as sentiment from './sentiment';
+import * as store from './store';
+import * as mock from './mock';
+import type {
+  AssetType, FilterDef, FilterInfo, Doc, RawRow, BaseRow, EnrichedRow,
+  Source, Divergence, RankingPayload, TickerDetail, SnapshotInput,
+} from './types';
 
 // ---- Filter definitions (which subreddits feed each tab) --------------------
 
-const FILTERS = {
+const FILTERS: Record<string, FilterDef> = {
   // Stocks
   'all-stocks': { label: 'All', type: 'stocks', subs: ['wallstreetbets', 'stocks', 'stockmarket', 'investing', 'options', 'Superstonk', 'pennystocks'] },
   wallstreetbets: { label: 'wallstreetbets', type: 'stocks', subs: ['wallstreetbets'] },
@@ -27,7 +29,7 @@ const FILTERS = {
   ethereum: { label: 'ethereum', type: 'crypto', subs: ['ethereum'] },
 };
 
-function listFilters() {
+export function listFilters(): FilterInfo[] {
   return Object.entries(FILTERS).map(([id, f]) => ({ id, label: f.label, type: f.type }));
 }
 
@@ -36,14 +38,21 @@ function listFilters() {
 const CASHTAG = /\$([A-Za-z]{1,5})\b/g;
 const BARE = /\b([A-Z]{1,5})\b/g;
 
-function extractFromDocs(docs, type) {
+interface Accum {
+  mentions: number;
+  upvotes: number;
+  sentNet: number;
+  sentSamples: number;
+}
+
+export function extractFromDocs(docs: Doc[], type: AssetType): RawRow[] {
   const dict = dictFor(type);
-  const acc = {}; // sym -> { mentions, upvotes, sentNet, sentSamples }
+  const acc: Record<string, Accum> = {};
 
   for (const doc of docs) {
-    const found = new Set();
+    const found = new Set<string>();
 
-    let m;
+    let m: RegExpExecArray | null;
     CASHTAG.lastIndex = 0;
     while ((m = CASHTAG.exec(doc.text))) {
       const sym = m[1].toUpperCase();
@@ -67,7 +76,7 @@ function extractFromDocs(docs, type) {
   }
 
   return Object.entries(acc)
-    .map(([ticker, a]) => ({
+    .map(([ticker, a]): RawRow => ({
       ticker,
       name: dict[ticker],
       mentions: a.mentions,
@@ -79,25 +88,26 @@ function extractFromDocs(docs, type) {
 
 // ---- Building a ranking with deltas vs. 24h-ago history ---------------------
 
-function withDeltas(filter, type, rows, now) {
+function withDeltas(filter: string, type: AssetType, rows: RawRow[], now: number): BaseRow[] {
   const prevSnap = store.snapshotNear(filter, type, now, 24);
   const prevOrder = prevSnap ? prevSnap.order : null;
   const prevData = prevSnap ? prevSnap.data : null;
 
-  return rows.map((r, i) => {
+  return rows.map((r, i): BaseRow => {
     const rank = i + 1;
-    let mentions24h = null;
-    let changePct = null;
-    let rankChange = null; // positive = climbed, 'new' = wasn't ranked before
+    let mentions24h: number | null = null;
+    let changePct: number | null = null;
+    let rankChange: BaseRow['rankChange'] = null;
 
     if (prevData && prevData[r.ticker]) {
       mentions24h = prevData[r.ticker].m;
-      const change = r.mentions - mentions24h;
-      changePct = mentions24h > 0 ? Math.round((change / mentions24h) * 100) : null;
+      if (mentions24h != null && mentions24h > 0) {
+        changePct = Math.round(((r.mentions - mentions24h) / mentions24h) * 100);
+      }
     }
     if (prevOrder) {
       const prevIdx = prevOrder.indexOf(r.ticker);
-      rankChange = prevIdx === -1 ? 'new' : prevIdx - i; // old rank minus new rank
+      rankChange = prevIdx === -1 ? 'new' : prevIdx - i;
     }
 
     return {
@@ -117,95 +127,83 @@ function withDeltas(filter, type, rows, now) {
 
 // ---- Public API: cached ranking per filter ---------------------------------
 
-const CACHE = {}; // filter id -> { ts, payload }
+const CACHE: Record<string, { ts: number; payload: RankingPayload }> = {};
 const CACHE_TTL_MS = 5 * 60 * 1000;
 // Minimum spacing between persisted snapshots per filter. Lower it (e.g. to
 // match a tighter cron cadence) via SNAPSHOT_MIN_GAP_MIN.
 const SNAPSHOT_MIN_GAP_MS = (Number(process.env.SNAPSHOT_MIN_GAP_MIN) || 30) * 60 * 1000;
 const TOP_N = 100;
 
-function lastSnapshotTs(filter, type) {
+function lastSnapshotTs(filter: string, type: AssetType): number {
   const snaps = store.snapshotsFor(filter, type);
   return snaps.length ? snaps[snaps.length - 1].ts : 0;
 }
 
-// Persist a snapshot at most every 30 min so history accrues without spam.
-function snapshotIfDue(filterId, type, rows, now) {
+// Persist a snapshot at most every SNAPSHOT_MIN_GAP_MS per filter.
+function snapshotIfDue(filterId: string, type: AssetType, rows: SnapshotInput[], now: number): void {
   if (now - lastSnapshotTs(filterId, type) > SNAPSHOT_MIN_GAP_MS) {
     store.addSnapshot(filterId, type, rows, now);
   }
 }
 
-function pack(filterId, f, source, now, ranked) {
-  return {
-    filter: filterId,
-    label: f.label,
-    type: f.type,
-    source,
-    updatedAt: now,
-    count: ranked.length,
-    rows: ranked,
-  };
+function pack(filterId: string, f: FilterDef, source: Source, now: number, ranked: EnrichedRow[]): RankingPayload {
+  return { filter: filterId, label: f.label, type: f.type, source, updatedAt: now, count: ranked.length, rows: ranked };
 }
 
 // Seed a real 24h-ago snapshot from ApeWisdom's mentions_24h_ago so the detail
 // chart shows the genuine 24h trend immediately (more points accrue over time).
-function seedApeHistory(filterId, type, ranked, now) {
+function seedApeHistory(filterId: string, type: AssetType, ranked: BaseRow[], now: number): void {
   if (store.snapshotNear(filterId, type, now, 24)) return;
-  const yday = ranked
+  const yday: SnapshotInput[] = ranked
     .filter((r) => r.mentions_24h != null)
-    .map((r) => ({ ticker: r.ticker, name: r.name, mentions: r.mentions_24h, upvotes: 0, sentiment: 0 }))
-    .sort((a, b) => b.mentions - a.mentions);
+    .map((r) => ({ ticker: r.ticker, mentions: r.mentions_24h, upvotes: 0, sentiment: 0 }))
+    .sort((a, b) => (b.mentions ?? 0) - (a.mentions ?? 0));
   if (yday.length) store.addSnapshot(filterId, type, yday, now - 24 * 3600 * 1000);
 }
 
 // Map a mention-% and price-% into a divergence classification — the "is the
 // hype matching the move?" signal that makes this more than a mention counter.
-function divergenceOf(mentionPct, pricePct) {
+function divergenceOf(mentionPct: number | null, pricePct: number | null): Divergence {
   if (mentionPct == null || pricePct == null) return null;
-  if (mentionPct >= 25 && pricePct <= -1) return 'hype'; // chatter surging, price falling
-  if (mentionPct <= -10 && pricePct >= 1) return 'fade'; // chatter cooling, price rising
+  if (mentionPct >= 25 && pricePct <= -1) return 'hype';
+  if (mentionPct <= -10 && pricePct >= 1) return 'fade';
   if ((mentionPct > 0 && pricePct > 0) || (mentionPct < 0 && pricePct < 0)) return 'aligned';
   return 'mixed';
 }
 
-// Add the no-key derived columns + market enrichment (price, day move, market
-// cap/volume) to a ranked list. Market lookups are cached and fail soft.
-async function enrichRanking(ranked, type, now) {
+// Add the no-key derived columns + market enrichment to a ranked list.
+async function enrichRanking(ranked: BaseRow[], type: AssetType, now: number): Promise<EnrichedRow[]> {
   const total = ranked.reduce((s, r) => s + (r.mentions || 0), 0) || 1;
   const maxMentions = ranked.reduce((m, r) => Math.max(m, r.mentions || 0), 0) || 1;
   const symbols = ranked.map((r) => r.ticker);
 
-  let quotes = {};
+  let quotes: Record<string, { price: number | null; changePct: number | null; volume: number | null; marketCap?: number | null; dayHigh?: number | null; dayLow?: number | null }> = {};
   try {
     quotes = type === 'crypto' ? await market.getCryptoQuotes(symbols, now) : await market.getStockQuotes(symbols, now);
-  } catch (_) {
+  } catch {
     quotes = {};
   }
 
-  return ranked.map((r) => {
-    const q = quotes[r.ticker] || {};
-    // growth score: map mention 24h% from [-50,150] to [0,100]; NEW counts as hot.
+  return ranked.map((r): EnrichedRow => {
+    const q = quotes[r.ticker] || ({} as (typeof quotes)[string]);
     const g = r.rankChange === 'new' ? 100 : r.changePct == null ? 50 : Math.max(0, Math.min(100, ((r.changePct + 50) / 200) * 100));
     const heat = Math.round(0.6 * ((r.mentions / maxMentions) * 100) + 0.4 * g);
     const priceChangePct = q.changePct ?? null;
 
     return {
       ...r,
-      // derived from ApeWisdom fields
       mentionChange: r.mentions_24h == null ? null : r.mentions - r.mentions_24h,
       upvotesPerMention: r.mentions > 0 ? Math.round(r.upvotes / r.mentions) : null,
       shareOfVoice: +((r.mentions / total) * 100).toFixed(1),
       heat,
       isNew: r.rankChange === 'new',
-      // market enrichment (no key)
       price: q.price ?? null,
       priceChangePct,
       marketCap: q.marketCap ?? null,
       volume: q.volume ?? null,
       dayHigh: q.dayHigh ?? null,
       dayLow: q.dayLow ?? null,
-      spark: q.spark || null,
+      spark: null,
       divergence: divergenceOf(r.changePct, priceChangePct),
     };
   });
@@ -215,14 +213,13 @@ async function enrichRanking(ranked, type, now) {
 //   1. your own Reddit OAuth pipeline (if credentials are configured)
 //   2. ApeWisdom's free public API (real data, no auth) — the default
 //   3. deterministic sample data (offline fallback)
-async function compute(filterId, now) {
+async function compute(filterId: string, now: number): Promise<RankingPayload> {
   const f = FILTERS[filterId];
   if (!f) throw new Error(`Unknown filter: ${filterId}`);
 
-  let ranked = null;
-  let source = null;
+  let ranked: BaseRow[] | null = null;
+  let source: Source | null = null;
 
-  // 1. Reddit OAuth — your independent pipeline.
   if (reddit.isConfigured()) {
     try {
       const docs = await reddit.fetchDocuments(f.subs);
@@ -230,23 +227,21 @@ async function compute(filterId, now) {
       if (rows.length < 5) throw new Error('Too few tickers from Reddit');
       ranked = withDeltas(filterId, f.type, rows, now);
       source = 'reddit';
-    } catch (e) {
+    } catch {
       /* fall through */
     }
   }
 
-  // 2. ApeWisdom public API — real, ApeWisdom-style data with no credentials.
   if (!ranked && apewisdom.hasFilter(filterId)) {
     try {
       ranked = await apewisdom.fetchRanking(filterId, TOP_N);
       seedApeHistory(filterId, f.type, ranked, now);
       source = 'apewisdom';
-    } catch (e) {
+    } catch {
       /* fall through */
     }
   }
 
-  // 3. Deterministic sample data (offline fallback).
   if (!ranked) {
     const rows = mock.buildRanking(f.type, filterId).slice(0, TOP_N);
     if (!store.snapshotNear(filterId, f.type, now, 24)) {
@@ -259,12 +254,12 @@ async function compute(filterId, now) {
   }
 
   // Enrich first, then snapshot — so price is captured in the stored history.
-  ranked = await enrichRanking(ranked, f.type, now);
-  snapshotIfDue(filterId, f.type, ranked, now);
-  return pack(filterId, f, source, now, ranked);
+  const enriched = await enrichRanking(ranked, f.type, now);
+  snapshotIfDue(filterId, f.type, enriched, now);
+  return pack(filterId, f, source as Source, now, enriched);
 }
 
-async function getRanking(filterId, { force = false } = {}, now = Date.now()) {
+export async function getRanking(filterId: string, { force = false }: { force?: boolean } = {}, now: number = Date.now()): Promise<RankingPayload> {
   const cached = CACHE[filterId];
   if (!force && cached && now - cached.ts < CACHE_TTL_MS) return cached.payload;
   const payload = await compute(filterId, now);
@@ -272,36 +267,34 @@ async function getRanking(filterId, { force = false } = {}, now = Date.now()) {
   return payload;
 }
 
-async function getDetail(filterId, ticker, now = Date.now()) {
+export async function getDetail(filterId: string, ticker: string, now: number = Date.now()): Promise<TickerDetail> {
   const f = FILTERS[filterId];
   if (!f) throw new Error(`Unknown filter: ${filterId}`);
   const sym = ticker.toUpperCase();
   const payload = await getRanking(filterId, {}, now);
-  const row = payload.rows.find((r) => r.ticker === sym);
+  const row = payload.rows.find((r) => r.ticker === sym) ?? null;
   const history = store.historyFor(filterId, f.type, sym);
 
-  // Richer per-ticker market detail for the modal: a price-history sparkline
-  // (Yahoo for stocks, CoinGecko for crypto) plus, for stocks, 52-wk range.
   let marketDetail = null;
   try {
     marketDetail = f.type === 'crypto' ? await market.getCryptoDetail(sym, now) : await market.getStockDetail(sym, now);
-  } catch (_) {
+  } catch {
     marketDetail = null;
   }
 
-  return { filter: filterId, ticker: sym, row: row || null, history, marketDetail };
+  return { filter: filterId, ticker: sym, row, history, marketDetail };
 }
 
-async function refreshAll(now = Date.now()) {
-  const out = [];
+export async function refreshAll(now: number = Date.now()): Promise<(RankingPayload | { filter: string; error: string })[]> {
+  const out: (RankingPayload | { filter: string; error: string })[] = [];
   for (const id of Object.keys(FILTERS)) {
     try {
       out.push(await getRanking(id, { force: true }, now));
     } catch (e) {
-      out.push({ filter: id, error: e.message });
+      out.push({ filter: id, error: (e as Error).message });
     }
   }
   return out;
 }
 
-module.exports = { FILTERS, listFilters, getRanking, getDetail, refreshAll, extractFromDocs };
+export { FILTERS };

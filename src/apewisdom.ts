@@ -1,21 +1,18 @@
-'use strict';
-
-const https = require('https');
+import https from 'https';
+import type { BaseRow } from './types';
 
 // ApeWisdom publishes a free, no-auth public API with exactly the mention/rank
 // data we want. Using it as a live source gives real, ApeWisdom-style numbers
-// with zero Reddit credentials. (The Reddit-OAuth path remains available for
-// running your own independent pipeline later.)
+// with zero Reddit credentials. (No sentiment field, so sentiment shows N/A.)
 //
 // Endpoint: https://apewisdom.io/api/v1.0/filter/{slug}/page/{n}
 // Fields per result: rank, ticker, name, mentions, upvotes,
 //                    rank_24h_ago, mentions_24h_ago
-// Note: no sentiment field is exposed, so sentiment shows as N/A for this source.
 
 const UA = 'reddit-trends/0.1 (ApeWisdom API client)';
 
 // Our internal filter id -> ApeWisdom slug. Validated against the live API.
-const SLUG = {
+const SLUG: Record<string, string> = {
   'all-stocks': 'all-stocks',
   wallstreetbets: 'wallstreetbets',
   stocks: 'stocks',
@@ -30,7 +27,23 @@ const SLUG = {
   ethereum: 'ethereum',
 };
 
-function getJSON(url) {
+interface ApeResult {
+  rank: number;
+  ticker: string;
+  name: string;
+  mentions: number;
+  upvotes: number;
+  rank_24h_ago: number | null;
+  mentions_24h_ago: number | null;
+}
+interface ApeResponse {
+  count: number;
+  pages: number;
+  current_page: number;
+  results: ApeResult[];
+}
+
+function getJSON<T = any>(url: string): Promise<T> {
   return new Promise((resolve, reject) => {
     const req = https.get(url, { headers: { 'User-Agent': UA, Accept: 'application/json' } }, (res) => {
       if (res.statusCode !== 200) {
@@ -42,9 +55,9 @@ function getJSON(url) {
       res.on('data', (c) => (body += c));
       res.on('end', () => {
         try {
-          resolve(JSON.parse(body));
+          resolve(JSON.parse(body) as T);
         } catch (e) {
-          reject(new Error(`Bad JSON from ${url}: ${e.message}`));
+          reject(new Error(`Bad JSON from ${url}: ${(e as Error).message}`));
         }
       });
     });
@@ -53,27 +66,25 @@ function getJSON(url) {
   });
 }
 
-function hasFilter(filterId) {
+export function hasFilter(filterId: string): boolean {
   return Boolean(SLUG[filterId]);
 }
 
-// Fetch and map one filter's ranking into our row schema (already including
-// 24h deltas straight from the API — no snapshot history required).
-async function fetchRanking(filterId, topN = 100) {
+// Fetch and map one filter's ranking into our row schema (24h deltas come
+// straight from the API — no snapshot history required).
+export async function fetchRanking(filterId: string, topN = 100): Promise<BaseRow[]> {
   const slug = SLUG[filterId];
   if (!slug) throw new Error(`No ApeWisdom slug for filter ${filterId}`);
 
-  const json = await getJSON(`https://apewisdom.io/api/v1.0/filter/${slug}/page/1`);
+  const json = await getJSON<ApeResponse>(`https://apewisdom.io/api/v1.0/filter/${slug}/page/1`);
   const results = (json.results || []).slice(0, topN);
   if (results.length === 0) throw new Error(`ApeWisdom returned no rows for ${slug}`);
 
-  return results.map((r) => {
+  return results.map((r): BaseRow => {
     const m24 = r.mentions_24h_ago;
     const change = m24 == null ? null : r.mentions - m24;
-    const changePct = m24 && m24 > 0 ? Math.round((change / m24) * 100) : null;
-    let rankChange = null;
-    if (r.rank_24h_ago == null) rankChange = 'new';
-    else rankChange = r.rank_24h_ago - r.rank; // positive = climbed
+    const changePct = m24 && m24 > 0 && change != null ? Math.round((change / m24) * 100) : null;
+    const rankChange = r.rank_24h_ago == null ? 'new' : r.rank_24h_ago - r.rank;
 
     return {
       rank: r.rank,
@@ -89,5 +100,3 @@ async function fetchRanking(filterId, topN = 100) {
     };
   });
 }
-
-module.exports = { fetchRanking, hasFilter, SLUG };

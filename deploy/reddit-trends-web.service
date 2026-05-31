@@ -12,7 +12,7 @@ Wants=network-online.target
 Type=simple
 User=pi
 WorkingDirectory=/home/pi/reddit-trends
-ExecStart=/usr/bin/node server.js
+ExecStart=/usr/bin/node dist/server.js
 Environment=PORT=4000
 Environment=DISABLE_BACKGROUND_REFRESH=1
 Restart=on-failure
