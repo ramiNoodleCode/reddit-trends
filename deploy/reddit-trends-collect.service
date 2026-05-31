@@ -1,0 +1,18 @@
+# Oneshot collector: fetches a fresh snapshot for every filter, then exits.
+# Triggered by reddit-trends-collect.timer. Edit User / WorkingDirectory /
+# ExecStart to match your Pi, then install (see deploy/README in DEPLOY.md).
+[Unit]
+Description=RedditTrends snapshot collector (oneshot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pi
+WorkingDirectory=/home/pi/reddit-trends
+# Use an absolute node path. Find yours with: which node
+# (nvm example: /home/pi/.nvm/versions/node/v20.18.0/bin/node)
+ExecStart=/usr/bin/node collect.js
+# Each cron run records a snapshot; keep this <= the timer interval.
+Environment=SNAPSHOT_MIN_GAP_MIN=25
+Nice=10

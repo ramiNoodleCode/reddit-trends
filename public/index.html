@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RedditTrends — trending stocks &amp; crypto on Reddit</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <div class="brand">
+        <span class="logo">📈</span>
+        <span class="brand-name">Reddit<b>Trends</b></span>
+      </div>
+      <div class="header-meta">
+        <span id="updated" class="updated"></span>
+        <button id="refresh" class="refresh-btn" title="Refresh now">↻</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <p class="tagline">
+      Most-mentioned tickers across Reddit — ranked by mentions, enriched with
+      live price &amp; momentum.
+    </p>
+
+    <div class="controls">
+      <div class="tabs" id="type-tabs">
+        <button class="tab active" data-type="stocks">Stocks</button>
+        <button class="tab" data-type="crypto">Crypto</button>
+      </div>
+      <div class="control-right">
+        <select id="filter-select" class="filter-select" aria-label="Subreddit filter" autocomplete="off"></select>
+        <label class="sort-wrap">
+          <span>Sort</span>
+          <select id="sort-select" class="filter-select" aria-label="Sort by" autocomplete="off"></select>
+        </label>
+        <input id="search" class="search" type="search" placeholder="Search ticker…" autocomplete="off" />
+      </div>
+    </div>
+
+    <div class="table-card">
+      <table class="trend-table">
+        <thead id="thead"></thead>
+        <tbody id="rows">
+          <tr><td class="loading">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="table-foot">
+      <span class="source-note" id="source-note"></span>
+      <div class="pager" id="pager"></div>
+    </div>
+  </main>
+
+  <!-- Detail modal -->
+  <div class="modal-backdrop" id="modal" hidden>
+    <div class="modal">
+      <button class="modal-close" id="modal-close">×</button>
+      <div class="modal-head">
+        <h2 id="m-ticker"></h2>
+        <span id="m-name" class="m-name"></span>
+        <span id="m-div" class="m-div"></span>
+      </div>
+      <div class="modal-stats" id="m-stats"></div>
+      <div class="chart-tabs">
+        <button class="chart-tab active" data-chart="mentions">Mentions</button>
+        <button class="chart-tab" data-chart="price">Price</button>
+      </div>
+      <div class="chart-wrap"><canvas id="m-chart"></canvas></div>
+    </div>
+  </div>
+
+  <footer class="site-footer wrap">
+    <span>Mentions via ApeWisdom · prices via Stooq/CoinGecko. Not investment advice.</span>
+    <span>An ApeWisdom-style demo · built with Claude Code</span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

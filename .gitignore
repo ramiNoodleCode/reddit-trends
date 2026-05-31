@@ -1,0 +1,8 @@
+node_modules/
+data/snapshots.json
+data/trends.db
+data/trends.db-shm
+data/trends.db-wal
+credentials.json
+*.log
+.DS_Store

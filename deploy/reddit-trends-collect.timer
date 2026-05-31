@@ -1,0 +1,14 @@
+# Runs the collector every 30 minutes (and shortly after boot). Pair with
+# reddit-trends-collect.service. Enable with:
+#   sudo systemctl enable --now reddit-trends-collect.timer
+[Unit]
+Description=Run RedditTrends collector every 30 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=30min
+Persistent=true
+Unit=reddit-trends-collect.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,22 @@
+# OPTIONAL: serves the web UI at http://<pi>:4000 and keeps it running/auto-
+# restarting. Collection is owned by the timer, so the in-process refresh is
+# disabled here (DISABLE_BACKGROUND_REFRESH=1) to avoid double collection.
+# Edit User / WorkingDirectory / ExecStart, then:
+#   sudo systemctl enable --now reddit-trends-web.service
+[Unit]
+Description=RedditTrends web UI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/reddit-trends
+ExecStart=/usr/bin/node server.js
+Environment=PORT=4000
+Environment=DISABLE_BACKGROUND_REFRESH=1
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
