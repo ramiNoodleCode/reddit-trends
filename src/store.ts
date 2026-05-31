@@ -27,11 +27,29 @@ db.exec(`
     upvotes   INTEGER,
     sentiment REAL,
     price     REAL,
+    volume    REAL,
     PRIMARY KEY (key, ts, ticker)
   );
   CREATE INDEX IF NOT EXISTS idx_key_ts        ON snapshots(key, ts);
   CREATE INDEX IF NOT EXISTS idx_key_ticker_ts ON snapshots(key, ticker, ts);
+
+  CREATE TABLE IF NOT EXISTS alert_state (
+    key            TEXT    NOT NULL,
+    ticker         TEXT    NOT NULL,
+    last_alert_ts  INTEGER NOT NULL,
+    last_score     REAL,
+    PRIMARY KEY (key, ticker)
+  );
+
+  CREATE TABLE IF NOT EXISTS meta (
+    k TEXT PRIMARY KEY,
+    v TEXT
+  );
 `);
+
+// Migrate pre-volume databases: add the column if an older schema is in place.
+const hasVolume = (db.prepare(`PRAGMA table_info(snapshots)`).all() as { name: string }[]).some((c) => c.name === 'volume');
+if (!hasVolume) db.exec('ALTER TABLE snapshots ADD COLUMN volume REAL');
 
 export function keyOf(filter: string, type: AssetType): string {
   return `${type}:${filter}`;
@@ -46,12 +64,13 @@ interface Row {
   upvotes: number | null;
   sentiment: number | null;
   price: number | null;
+  volume: number | null;
 }
 
 // ---- prepared statements ----------------------------------------------------
 const insertRow = db.prepare(
-  `INSERT OR REPLACE INTO snapshots (key, ts, ticker, rank, mentions, upvotes, sentiment, price)
-   VALUES (@key, @ts, @ticker, @rank, @mentions, @upvotes, @sentiment, @price)`
+  `INSERT OR REPLACE INTO snapshots (key, ts, ticker, rank, mentions, upvotes, sentiment, price, volume)
+   VALUES (@key, @ts, @ticker, @rank, @mentions, @upvotes, @sentiment, @price, @volume)`
 );
 const pruneStmt = db.prepare('DELETE FROM snapshots WHERE ts < ?');
 const distinctTsStmt = db.prepare('SELECT DISTINCT ts FROM snapshots WHERE key = ? ORDER BY ts ASC');
@@ -61,6 +80,15 @@ const nearestTsStmt = db.prepare(
 );
 const rowsForTsStmt = db.prepare('SELECT ticker, rank, mentions, upvotes, sentiment, price FROM snapshots WHERE key = ? AND ts = ? ORDER BY rank ASC');
 const historyStmt = db.prepare('SELECT ts, mentions, price FROM snapshots WHERE key = ? AND ticker = ? ORDER BY ts ASC');
+const latestTsStmt = db.prepare('SELECT MAX(ts) AS ts FROM snapshots WHERE key = ?');
+const latestRowsStmt = db.prepare('SELECT ticker, mentions, price, volume FROM snapshots WHERE key = ? AND ts = ?');
+const seriesStmt = db.prepare(
+  'SELECT ts, mentions, price, volume FROM snapshots WHERE key = ? AND ticker = ? AND ts >= ? ORDER BY ts ASC'
+);
+const getAlertStmt = db.prepare('SELECT last_alert_ts, last_score FROM alert_state WHERE key = ? AND ticker = ?');
+const setAlertStmt = db.prepare(
+  `INSERT OR REPLACE INTO alert_state (key, ticker, last_alert_ts, last_score) VALUES (?, ?, ?, ?)`
+);
 
 const insertMany = db.transaction((rows: Row[]) => {
   for (const r of rows) insertRow.run(r);
@@ -78,6 +106,7 @@ export function addSnapshot(filter: string, type: AssetType, tickers: SnapshotIn
     upvotes: t.upvotes ?? null,
     sentiment: t.sentiment ?? null,
     price: t.price ?? null,
+    volume: t.volume ?? null,
   }));
   insertMany(rows);
   pruneStmt.run(ts - RETENTION_DAYS * 24 * 3600 * 1000);
@@ -112,6 +141,59 @@ export function historyFor(filter: string, type: AssetType, ticker: string): His
   return rows.map((r) => ({ ts: r.ts, mentions: r.mentions, price: r.price }));
 }
 
+// ---- alerter support: latest tickers, per-ticker series, cooldown state ------
+
+export interface SeriesPoint {
+  ts: number;
+  mentions: number | null;
+  price: number | null;
+  volume: number | null;
+}
+
+export interface LatestRow {
+  ticker: string;
+  mentions: number | null;
+  price: number | null;
+  volume: number | null;
+}
+
+// The most recent snapshot's rows for a key (the just-collected reading).
+export function latestTickers(filter: string, type: AssetType): LatestRow[] {
+  const key = keyOf(filter, type);
+  const hit = latestTsStmt.get(key) as { ts: number | null } | undefined;
+  if (!hit || hit.ts == null) return [];
+  return latestRowsStmt.all(key, hit.ts) as LatestRow[];
+}
+
+// One ticker's snapshot series since `sinceTs`, oldest-first — the input the
+// spike detector reads to compute velocity + baseline.
+export function seriesSince(filter: string, type: AssetType, ticker: string, sinceTs: number): SeriesPoint[] {
+  return seriesStmt.all(keyOf(filter, type), ticker, sinceTs) as SeriesPoint[];
+}
+
+export function getAlertState(filter: string, type: AssetType, ticker: string): { lastAlertTs: number; lastScore: number } | null {
+  const hit = getAlertStmt.get(keyOf(filter, type), ticker) as { last_alert_ts: number; last_score: number } | undefined;
+  return hit ? { lastAlertTs: hit.last_alert_ts, lastScore: hit.last_score } : null;
+}
+
+export function setAlertState(filter: string, type: AssetType, ticker: string, ts: number, score: number): void {
+  setAlertStmt.run(keyOf(filter, type), ticker, ts, score);
+}
+
+// Small key-value store (used by the watcher to remember the last data
+// fingerprint, so it can tell when ApeWisdom has actually refreshed).
+const getMetaStmt = db.prepare('SELECT v FROM meta WHERE k = ?');
+const setMetaStmt = db.prepare('INSERT OR REPLACE INTO meta (k, v) VALUES (?, ?)');
+
+export function getMeta(k: string): string | null {
+  const hit = getMetaStmt.get(k) as { v: string } | undefined;
+  return hit ? hit.v : null;
+}
+
+export function setMeta(k: string, v: string): void {
+  setMetaStmt.run(k, v);
+}
+
 // ---- one-time migration from the legacy JSON store --------------------------
 function migrateLegacyIfNeeded(): void {
   const count = (db.prepare('SELECT COUNT(*) AS n FROM snapshots').get() as { n: number }).n;
@@ -125,7 +207,7 @@ function migrateLegacyIfNeeded(): void {
       const order = s.order || Object.keys(s.data || {});
       order.forEach((ticker, i) => {
         const d = (s.data || {})[ticker] || {};
-        rows.push({ key: s.key, ts: s.ts, ticker, rank: i + 1, mentions: d.m ?? null, upvotes: d.u ?? null, sentiment: d.s ?? null, price: d.p ?? null });
+        rows.push({ key: s.key, ts: s.ts, ticker, rank: i + 1, mentions: d.m ?? null, upvotes: d.u ?? null, sentiment: d.s ?? null, price: d.p ?? null, volume: null });
       });
     }
     if (rows.length) {

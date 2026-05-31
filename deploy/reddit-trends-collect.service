@@ -1,8 +1,8 @@
-# Oneshot collector: fetches a fresh snapshot for every filter, then exits.
-# Triggered by reddit-trends-collect.timer. Edit User / WorkingDirectory /
-# ExecStart to match your Pi, then install (see deploy/README in DEPLOY.md).
+# Oneshot ApeWisdom refresh watcher: cheaply checks whether ApeWisdom has
+# refreshed; only on a real change does it collect all filters + run the spike
+# alerter. Triggered every few minutes by reddit-trends-collect.timer.
 [Unit]
-Description=RedditTrends snapshot collector (oneshot)
+Description=RedditTrends ApeWisdom watcher (collect + alert on refresh)
 After=network-online.target
 Wants=network-online.target
 
@@ -10,9 +10,10 @@ Wants=network-online.target
 Type=oneshot
 User=pi
 WorkingDirectory=/home/pi/reddit-trends
+# Telegram creds + spike thresholds + SNAPSHOT_MIN_GAP_MIN live here (gitignored).
+EnvironmentFile=/home/pi/reddit-trends/alert.env
 # Use an absolute node path. Find yours with: which node
 # (nvm example: /home/pi/.nvm/versions/node/v20.18.0/bin/node)
-ExecStart=/usr/bin/node dist/collect.js
-# Each cron run records a snapshot; keep this <= the timer interval.
-Environment=SNAPSHOT_MIN_GAP_MIN=25
+# Detects an ApeWisdom refresh, then collects every filter + posts any spikes.
+ExecStart=/usr/bin/node dist/watch.js
 Nice=10

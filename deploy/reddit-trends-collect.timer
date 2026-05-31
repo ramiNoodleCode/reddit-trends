@@ -1,12 +1,14 @@
-# Runs the collector every 30 minutes (and shortly after boot). Pair with
-# reddit-trends-collect.service. Enable with:
+# Polls every 5 minutes (and shortly after boot). The watcher itself is cheap
+# when nothing changed; it only does the full collect + alert when it detects an
+# ApeWisdom refresh, so fresh data lands within ~5 min of every refresh without
+# storing duplicate snapshots. Pair with reddit-trends-collect.service.
 #   sudo systemctl enable --now reddit-trends-collect.timer
 [Unit]
-Description=Run RedditTrends collector every 30 minutes
+Description=Poll for ApeWisdom refresh every 5 minutes
 
 [Timer]
-OnBootSec=2min
-OnUnitActiveSec=30min
+OnBootSec=1min
+OnUnitActiveSec=5min
 Persistent=true
 Unit=reddit-trends-collect.service
 

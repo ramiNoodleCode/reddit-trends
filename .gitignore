@@ -9,3 +9,4 @@ data/trends.db-wal
 credentials.json
 *.log
 .DS_Store
+alert.env

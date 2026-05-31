@@ -108,6 +108,7 @@ export interface SnapshotInput {
   upvotes?: number | null;
   sentiment?: number | null;
   price?: number | null;
+  volume?: number | null;
 }
 
 export interface SnapshotEntry {
