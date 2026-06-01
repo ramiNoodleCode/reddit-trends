@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist-test",
+    "types": ["node"],
+    "noEmit": false
+  },
+  "include": ["src/spike.ts", "src/spike.test.ts", "src/types.ts"],
+  "exclude": ["node_modules", "dist", "dist-test"]
+}
